@@ -283,26 +283,13 @@
       <div class="steps">
         <b style="color:var(--ink)">Push to your live map in 3 steps:</b><br>
         1. <a id="exp_dl" href="#">⬇ Download updated index.html</a><br>
-        2. <a id="exp_gh" href="https://github.com/rmatthiu/AvioEvents" target="_blank">Open your repo</a> → your <code>index.html</code> → ✏️ edit / delete → upload the new file → <b>Commit</b>.<br>
+        2. <a id="exp_gh" href="https://github.com/rmatthiu/AvioEvents/upload/release" target="_blank">Open repo → upload</a> to replace <code>index.html</code> → <b>Commit</b>.<br>
         3. Wait ~1 min; refresh <code>…github.io/AvioEvents/?v=new</code>.
-      </div>
-      <div style="border-top:1px solid var(--line);margin:14px 0 4px;padding-top:12px">
-        <b style="color:var(--ink);font-family:'IBM Plex Mono',monospace;font-size:11.5px">⚡ One-click auto-save (optional)</b>
-        <div class="hintline">Paste a GitHub token once → the map commits changes for you. Stored only in this browser, never in the file. Use a fine-grained token limited to this repo with <b>Contents: read/write</b>.</div>
-        <div class="row2" style="margin-top:8px">
-          <div class="fld" style="margin:0"><label>Owner</label><input id="gh_owner" placeholder="rmatthiu"></div>
-          <div class="fld" style="margin:0"><label>Repo</label><input id="gh_repo" placeholder="AvioEvents"></div>
-        </div>
-        <div class="row2" style="margin-top:8px">
-          <div class="fld" style="margin:0"><label>Branch</label><input id="gh_branch" placeholder="release"></div>
-          <div class="fld" style="margin:0"><label>Path</label><input id="gh_path" placeholder="index.html"></div>
-        </div>
-        <div class="fld" style="margin-top:8px"><label>Token</label><input id="gh_token" type="password" placeholder="github_pat_…"></div>
       </div>
       <div class="hintline" id="exp_note" style="margin-top:8px"></div>
       <div class="mact">
+        <button class="cancel" id="exp_csv">⬇ CSV</button>
         <button class="cancel" id="exp_copy">Copy JSON</button>
-        <button class="cancel" id="exp_save2gh">⚡ Save to GitHub</button>
         <button class="save" id="exp_close">Done</button>
       </div>
     </div>
@@ -592,7 +579,6 @@ document.getElementById("f_save").onclick=()=>{
 /* ---- export / save modal ---- */
 function openExp(){
   document.getElementById("exp_count").textContent=Math.max(runtimeEdits,lsGet(LS,"[]").length)+" event(s) added this session";
-  const g=lsGet(LSG,"{}");["owner","repo","branch","path","token"].forEach(k=>{if(g[k])document.getElementById("gh_"+k).value=g[k];});
   document.getElementById("exp_note").textContent="";
   document.getElementById("expOv").classList.add("on");
 }
@@ -618,22 +604,17 @@ document.getElementById("exp_dl").onclick=async(e)=>{
 document.getElementById("exp_copy").onclick=()=>{
   navigator.clipboard.writeText(JSON.stringify(EVENTS)).then(()=>note("Events JSON copied to clipboard."),()=>note("Copy failed — select the file manually."));
 };
-document.getElementById("exp_save2gh").onclick=async()=>{
-  const cfg={owner:gv("gh_owner")||"rmatthiu",repo:gv("gh_repo")||"AvioEvents",branch:gv("gh_branch")||"release",path:gv("gh_path")||"index.html",token:gv("gh_token")};
-  if(!cfg.token){note("Enter a GitHub token first (fine-grained · Contents: read/write).");return;}
-  lsSet(LSG,cfg); note("Committing to GitHub…");
-  try{
-    const api="https://api.github.com/repos/"+cfg.owner+"/"+cfg.repo+"/contents/"+cfg.path.split("/").map(encodeURIComponent).join("/");
-    const H={Authorization:"Bearer "+cfg.token,Accept:"application/vnd.github+json"};
-    const g=await fetch(api+"?ref="+encodeURIComponent(cfg.branch),{headers:H});
-    if(!g.ok){note("Can't read the repo file ("+g.status+"). Check owner / repo / branch / path and token scope.");return;}
-    const meta=await g.json();
-    const html=await buildNewHtml();
-    const content=btoa(unescape(encodeURIComponent(html)));
-    const put=await fetch(api,{method:"PUT",headers:H,body:JSON.stringify({message:"Add event(s) via map form",content:content,sha:meta.sha,branch:cfg.branch})});
-    if(put.ok){note("✓ Committed! Your live map updates in ~1 min. Local drafts cleared.");lsSet(LS,[]);runtimeEdits=0;}
-    else{const j=await put.json().catch(()=>({}));note("Commit failed ("+put.status+"): "+(j.message||"check token permissions."));}
-  }catch(err){note("Error: "+err.message+" (token needs Contents: read/write on this repo).");}
+
+
+function toCSV(){
+  const rows=[["Country","Region","Event","City","Date","When","Category","Official URL","Verified"]];
+  EVENTS.forEach(c=>c.events.forEach(e=>rows.push([c.country,c.region,e.name,e.city||"",e.date,e.when,e.cat,e.url,e.verified?"yes":"check"])));
+  return rows.map(r=>r.map(x=>{x=String(x);return /[",\n]/.test(x)?'"'+x.replace(/"/g,'""')+'"':x;}).join(",")).join("\r\n");
+}
+document.getElementById("exp_csv").onclick=()=>{
+  const blob=new Blob(["\ufeff"+toCSV()],{type:"text/csv;charset=utf-8"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="aviation-events.csv";a.click();
+  note("CSV downloaded.");
 };
 
 /* ---- restore browser-saved adds on load ---- */
