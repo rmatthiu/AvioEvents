@@ -286,8 +286,25 @@
         2. <a id="exp_gh" href="https://github.com/rmatthiu/AvioEvents" target="_blank">Open your repo</a> → your <code>index.html</code> → ✏️ edit / delete → upload the new file → <b>Commit</b>.<br>
         3. Wait ~1 min; refresh <code>…github.io/AvioEvents/?v=new</code>.
       </div>
-      <div class="hintline" id="exp_note" style="margin-top:10px"></div>
-      <div class="mact"><button class="cancel" id="exp_copy">Copy events JSON</button><button class="save" id="exp_close">Done</button></div>
+      <div style="border-top:1px solid var(--line);margin:14px 0 4px;padding-top:12px">
+        <b style="color:var(--ink);font-family:'IBM Plex Mono',monospace;font-size:11.5px">⚡ One-click auto-save (optional)</b>
+        <div class="hintline">Paste a GitHub token once → the map commits changes for you. Stored only in this browser, never in the file. Use a fine-grained token limited to this repo with <b>Contents: read/write</b>.</div>
+        <div class="row2" style="margin-top:8px">
+          <div class="fld" style="margin:0"><label>Owner</label><input id="gh_owner" placeholder="rmatthiu"></div>
+          <div class="fld" style="margin:0"><label>Repo</label><input id="gh_repo" placeholder="AvioEvents"></div>
+        </div>
+        <div class="row2" style="margin-top:8px">
+          <div class="fld" style="margin:0"><label>Branch</label><input id="gh_branch" placeholder="release"></div>
+          <div class="fld" style="margin:0"><label>Path</label><input id="gh_path" placeholder="index.html"></div>
+        </div>
+        <div class="fld" style="margin-top:8px"><label>Token</label><input id="gh_token" type="password" placeholder="github_pat_…"></div>
+      </div>
+      <div class="hintline" id="exp_note" style="margin-top:8px"></div>
+      <div class="mact">
+        <button class="cancel" id="exp_copy">Copy JSON</button>
+        <button class="cancel" id="exp_save2gh">⚡ Save to GitHub</button>
+        <button class="save" id="exp_close">Done</button>
+      </div>
     </div>
   </div>
 </div>
@@ -483,6 +500,147 @@ document.getElementById("reset").onclick=()=>{
 };
 layout();apply();
 window.addEventListener("resize",layout);
+
+/* ================= add-event · persistence · github sync ================= */
+const MO=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const LS="avioEvents_pending", LSG="avioEvents_gh";
+let runtimeEdits=0;
+function gv(id){return (document.getElementById(id).value||"").trim();}
+function fmtWhen(iso){const p=iso.split("-");return MO[(+p[1])-1]+" "+(+p[2])+", "+p[0];}
+function lsGet(k,f){try{return JSON.parse(localStorage.getItem(k)||f);}catch(e){return JSON.parse(f);}}
+function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
+
+function makeBeacon(d){
+  const g=gBeacons.append("g").datum(d).attr("class","beacon").attr("data-c",d.c).style("cursor","pointer")
+    .on("click",(e,dd)=>select(dd.c)).on("mousemove",(e,dd)=>showTip(e,dd)).on("mouseleave",()=>tt.style.opacity=0);
+  g.append("circle").attr("class","beacon-ring pulse");
+  g.append("circle").attr("class","beacon-core");
+  g.append("circle").attr("class","beacon-hit").attr("r",13);
+  bsel=gBeacons.selectAll("g.beacon");
+}
+function insertEvent(ev,meta){
+  let c=EVENTS.find(x=>x.c===meta.code);
+  if(!c){c={c:meta.code,country:meta.country,region:meta.region,lon:meta.lon,lat:meta.lat,events:[]};
+    EVENTS.push(c);litCodes.add(c.c);makeBeacon(c);}
+  if(c.events.some(e=>e.name===ev.name))return c;
+  c.events.push(ev);FLAT.push({e:ev,country:c.country,region:c.region,code:c.c});return c;
+}
+
+/* ---- form selects ---- */
+const selC=document.getElementById("f_country"), selCat=document.getElementById("f_cat");
+selCat.innerHTML=Object.keys(CAT_COLORS).map(k=>"<option>"+k+"</option>").join("");
+function fillCountrySelect(){
+  const opts=[...EVENTS].sort((a,b)=>a.country.localeCompare(b.country))
+    .map(c=>'<option value="'+c.c+'">'+c.country+'</option>').join("");
+  selC.innerHTML=opts+'<option value="__new__">＋ New country…</option>';
+}
+selC.addEventListener("change",()=>{
+  const isNew=selC.value==="__new__";
+  document.getElementById("newCountryFields").classList.toggle("on",isNew);
+  setPick(isNew);
+});
+
+/* ---- click map to set coordinates (new country) ---- */
+let pickRect=null;
+function setPick(on){
+  if(on&&!pickRect){
+    const w=svg.node().clientWidth,h=svg.node().clientHeight;
+    pickRect=svg.append("rect").attr("x",0).attr("y",0).attr("width",w).attr("height",h)
+      .attr("fill","transparent").style("cursor","crosshair")
+      .on("click",(ev)=>{
+        const t=d3.zoomTransform(svg.node());
+        const p=d3.pointer(ev,svg.node());
+        const xy=t.invert(p); const ll=projection.invert(xy);
+        if(ll){document.getElementById("f_lon").value=ll[0].toFixed(2);
+               document.getElementById("f_lat").value=ll[1].toFixed(2);}
+      });
+  }else if(!on&&pickRect){pickRect.remove();pickRect=null;}
+}
+
+/* ---- open/close add modal ---- */
+function openAdd(){
+  fillCountrySelect();
+  document.getElementById("newCountryFields").classList.remove("on");setPick(false);
+  ["f_name","f_newcountry","f_lon","f_lat","f_city","f_url"].forEach(id=>document.getElementById(id).value="");
+  document.getElementById("f_date").value="";document.getElementById("f_ver").checked=true;
+  document.getElementById("addOv").classList.add("on");
+}
+function closeAdd(){document.getElementById("addOv").classList.remove("on");setPick(false);}
+document.getElementById("addBtn").onclick=openAdd;
+document.getElementById("f_cancel").onclick=closeAdd;
+document.getElementById("addOv").addEventListener("click",e=>{if(e.target.id==="addOv")closeAdd();});
+
+document.getElementById("f_save").onclick=()=>{
+  const name=gv("f_name"),url=gv("f_url"),date=gv("f_date");
+  if(!name||!url||!date){alert("Event name, date and official URL are required.");return;}
+  let meta;
+  if(selC.value==="__new__"){
+    const cn=gv("f_newcountry"),lon=parseFloat(gv("f_lon")),lat=parseFloat(gv("f_lat"));
+    if(!cn||isNaN(lon)||isNaN(lat)){alert("New country needs a name and coordinates — click the map to drop a pin.");return;}
+    const code="X"+cn.replace(/[^A-Za-z]/g,"").slice(0,4).toUpperCase()+Math.floor(Math.random()*900+100);
+    meta={code,country:cn,region:gv("f_region"),lon,lat};
+  }else{
+    const c=EVENTS.find(x=>x.c===selC.value);
+    meta={code:c.c,country:c.country,region:c.region,lon:c.lon,lat:c.lat};
+  }
+  const ev={name,city:gv("f_city"),date,when:fmtWhen(date),cat:selCat.value,url,verified:document.getElementById("f_ver").checked};
+  insertEvent(ev,meta);
+  const pend=lsGet(LS,"[]");pend.push({ev,meta});lsSet(LS,pend);
+  runtimeEdits++; layout(); apply(); closeAdd();
+};
+
+/* ---- export / save modal ---- */
+function openExp(){
+  document.getElementById("exp_count").textContent=Math.max(runtimeEdits,lsGet(LS,"[]").length)+" event(s) added this session";
+  const g=lsGet(LSG,"{}");["owner","repo","branch","path","token"].forEach(k=>{if(g[k])document.getElementById("gh_"+k).value=g[k];});
+  document.getElementById("exp_note").textContent="";
+  document.getElementById("expOv").classList.add("on");
+}
+document.getElementById("exportBtn").onclick=openExp;
+document.getElementById("exp_close").onclick=()=>document.getElementById("expOv").classList.remove("on");
+document.getElementById("expOv").addEventListener("click",e=>{if(e.target.id==="expOv")document.getElementById("expOv").classList.remove("on");});
+function note(t){document.getElementById("exp_note").textContent=t;}
+
+async function buildNewHtml(){
+  const res=await fetch(location.href,{cache:"no-store"});
+  let src=await res.text();
+  const a=src.indexOf("const EVENTS = ")+"const EVENTS = ".length;
+  const b=src.indexOf("const CAT_COLORS");
+  return src.slice(0,a)+JSON.stringify(EVENTS)+";\n\n"+src.slice(b);
+}
+document.getElementById("exp_dl").onclick=async(e)=>{
+  e.preventDefault();
+  try{const html=await buildNewHtml();const blob=new Blob([html],{type:"text/html"});
+    const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="index.html";a.click();
+    note("Downloaded. Upload it to your repo to go live.");
+  }catch(err){note("Couldn't read the page source — this works on the GitHub Pages URL (not a local file). Use Copy JSON instead.");}
+};
+document.getElementById("exp_copy").onclick=()=>{
+  navigator.clipboard.writeText(JSON.stringify(EVENTS)).then(()=>note("Events JSON copied to clipboard."),()=>note("Copy failed — select the file manually."));
+};
+document.getElementById("exp_save2gh").onclick=async()=>{
+  const cfg={owner:gv("gh_owner")||"rmatthiu",repo:gv("gh_repo")||"AvioEvents",branch:gv("gh_branch")||"release",path:gv("gh_path")||"index.html",token:gv("gh_token")};
+  if(!cfg.token){note("Enter a GitHub token first (fine-grained · Contents: read/write).");return;}
+  lsSet(LSG,cfg); note("Committing to GitHub…");
+  try{
+    const api="https://api.github.com/repos/"+cfg.owner+"/"+cfg.repo+"/contents/"+cfg.path.split("/").map(encodeURIComponent).join("/");
+    const H={Authorization:"Bearer "+cfg.token,Accept:"application/vnd.github+json"};
+    const g=await fetch(api+"?ref="+encodeURIComponent(cfg.branch),{headers:H});
+    if(!g.ok){note("Can't read the repo file ("+g.status+"). Check owner / repo / branch / path and token scope.");return;}
+    const meta=await g.json();
+    const html=await buildNewHtml();
+    const content=btoa(unescape(encodeURIComponent(html)));
+    const put=await fetch(api,{method:"PUT",headers:H,body:JSON.stringify({message:"Add event(s) via map form",content:content,sha:meta.sha,branch:cfg.branch})});
+    if(put.ok){note("✓ Committed! Your live map updates in ~1 min. Local drafts cleared.");lsSet(LS,[]);runtimeEdits=0;}
+    else{const j=await put.json().catch(()=>({}));note("Commit failed ("+put.status+"): "+(j.message||"check token permissions."));}
+  }catch(err){note("Error: "+err.message+" (token needs Contents: read/write on this repo).");}
+};
+
+/* ---- restore browser-saved adds on load ---- */
+(function hydrateLocal(){
+  const pend=lsGet(LS,"[]");
+  if(pend.length){pend.forEach(p=>insertEvent(p.ev,p.meta));runtimeEdits=pend.length;layout();apply();}
+})();
 </script>
 </body>
 </html>
