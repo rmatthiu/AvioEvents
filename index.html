@@ -88,6 +88,12 @@
   .legend .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--phosphor);box-shadow:0 0 8px var(--phosphor);margin-right:6px;vertical-align:middle}
   .legend .dot.a{background:var(--amber);box-shadow:0 0 8px var(--amber)}
   .hint{position:absolute;right:16px;bottom:14px;font-family:"IBM Plex Mono",monospace;font-size:10px;color:var(--ink-faint)}
+  .zoombtns{position:absolute;top:12px;right:12px;display:flex;flex-direction:column;gap:6px;z-index:15}
+  .zoombtns button{width:42px;height:42px;border-radius:9px;border:1px solid var(--line);
+    background:rgba(9,20,31,.92);color:var(--phosphor);font-size:22px;font-family:"IBM Plex Mono",monospace;
+    cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center;padding:0;backdrop-filter:blur(4px)}
+  .zoombtns button:active{background:rgba(63,224,208,.18)}
+  .zoombtns button:hover{border-color:var(--phosphor-dim)}
 
   aside{width:400px;flex:none;border-left:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;min-height:0}
   .panel-head{padding:16px 20px 12px;border-bottom:1px solid var(--line)}
@@ -180,6 +186,11 @@
       <div class="legend">
         <div><span class="dot"></span>Event location · size = number of events</div>
         <div><span class="dot a"></span>Selected country</div>
+      </div>
+      <div class="zoombtns">
+        <button id="zin" aria-label="Zoom in">+</button>
+        <button id="zout" aria-label="Zoom out">&minus;</button>
+        <button id="zrst" aria-label="Reset view">&#8862;</button>
       </div>
       <div class="hint">scroll to zoom · drag to pan · click a beacon</div>
     </div>
@@ -279,12 +290,15 @@ function drawBeacons(){const k=currentK;
 }
 const zoom=d3.zoom().scaleExtent([1,9]).filter(ev=>{
   if(ev.type==="wheel")return true;
-  if(ev.type&&ev.type.startsWith("touch"))return ev.touches&&ev.touches.length>=2; // 1 finger = scroll page, 2 = zoom
-  return !ev.button; // desktop mouse drag
+  if(ev.type&&ev.type.startsWith("touch"))return ev.touches&&ev.touches.length>=2; // 1 finger scrolls page, 2 fingers pinch-zoom
+  return !ev.button;                    // desktop mouse drag
 }).on("zoom",e=>{
   gZoom.attr("transform",e.transform);currentK=e.transform.k;drawBeacons();
   gCountries.selectAll("path").attr("stroke-width",0.4/currentK);});
 svg.call(zoom);
+document.getElementById("zin").onclick=()=>svg.transition().duration(220).call(zoom.scaleBy,1.6);
+document.getElementById("zout").onclick=()=>svg.transition().duration(220).call(zoom.scaleBy,1/1.6);
+document.getElementById("zrst").onclick=()=>svg.transition().duration(420).call(zoom.transform,d3.zoomIdentity);
 function showTip(e,d){
   const v=visibleFor(d);const names=v.slice(0,4).map(x=>"• "+x.name).join("<br>");
   const more=v.length>4?`<br>+${v.length-4} more…`:"";
