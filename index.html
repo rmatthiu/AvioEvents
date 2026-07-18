@@ -118,9 +118,15 @@
   .foot{padding:11px 20px;border-top:1px solid var(--line);font-family:"IBM Plex Mono",monospace;font-size:10px;color:var(--ink-faint);line-height:1.6}
   .foot b{color:var(--ink-dim);font-weight:500}
   @media (max-width:960px){
+    html,body{overflow:auto;height:auto;-webkit-overflow-scrolling:touch}
+    .wrap{height:auto;min-height:100dvh}
     main{flex-direction:column}
-    aside{width:auto;border-left:none;border-top:1px solid var(--line);max-height:46vh}
-    .mapwrap{min-height:300px}
+    aside{width:auto;border-left:none;border-top:1px solid var(--line);max-height:none}
+    .events{max-height:none;overflow:visible}
+    .mapwrap{height:56vh;min-height:340px;flex:none}
+    svg.map{touch-action:pan-y}
+    .datehead{position:static}
+    .hint{display:none}
     .stats{width:100%;margin-left:0;justify-content:flex-start;gap:24px}
   }
 </style>
@@ -271,7 +277,11 @@ function drawBeacons(){const k=currentK;
   bsel.select(".beacon-ring").attr("r",d=>rFor(Math.max(visibleFor(d).length,1))/k*0.72).attr("stroke-width",1.4/k);
   bsel.select(".beacon-hit").attr("r",14/k);
 }
-const zoom=d3.zoom().scaleExtent([1,9]).on("zoom",e=>{
+const zoom=d3.zoom().scaleExtent([1,9]).filter(ev=>{
+  if(ev.type==="wheel")return true;
+  if(ev.type&&ev.type.startsWith("touch"))return ev.touches&&ev.touches.length>=2; // 1 finger = scroll page, 2 = zoom
+  return !ev.button; // desktop mouse drag
+}).on("zoom",e=>{
   gZoom.attr("transform",e.transform);currentK=e.transform.k;drawBeacons();
   gCountries.selectAll("path").attr("stroke-width",0.4/currentK);});
 svg.call(zoom);
